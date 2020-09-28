@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:manejo_sockets_1/models/civilizacion.dart';
+import 'package:manejo_sockets_1/services/socket_service.dart';
+import 'package:pie_chart/pie_chart.dart';
+import 'package:provider/provider.dart';
 class HomePage extends StatefulWidget {
 
   @override
@@ -27,8 +30,33 @@ class _HomePageState extends State<HomePage> {
       votes: 1
     ),
   ];
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    //con el listen: false, me permite usar el context antes de que haya terminado el initState
+    final socketService = Provider.of<SocketService>(context, listen: false);
+    socketService.socket.on('civilizaciones_activas', _handleActiveCivilizations);
+  }
+
+  void _handleActiveCivilizations(dynamic data){
+    print('data from civilizaciones activas: ${data.toString()}');
+    try{
+      civilizaciones = (data as List).cast<Map<String, dynamic>>().map((Map<String, dynamic> civilization){
+        print('actual civilization: ${civilization.toString()}');
+        return Civilizacion.fromMap(civilization);
+      }).toList();
+      setState(() {
+        
+      });
+    }catch(err){
+      print('ha ocurrido un error:\n${err.toString()}');
+    }
+  }
   @override
   Widget build(BuildContext context) {
+    SocketService socketService = Provider.of<SocketService>(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -37,12 +65,37 @@ class _HomePageState extends State<HomePage> {
             color: Colors.black87
           ),
         ),
+        actions: [
+          Container(
+            margin: EdgeInsets.only(right: 10),
+            child: ((socketService.serverStatus == ServerStatus.ONLINE)? 
+              Icon(
+                Icons.check_circle,
+                color: Colors.blue[300],
+              )
+              :Icon(
+                Icons.offline_bolt,
+                color: Colors.deepOrangeAccent,
+              )
+              
+            ),
+            
+          )
+        ],
         backgroundColor: Colors.white,
         elevation: 2,
       ),
-      body: ListView.builder(
-        itemBuilder: (BuildContext context, int index) => _crearCivilizationTile(civilizaciones[index]),
-        itemCount: civilizaciones.length,        
+      body: Column(
+        children: [
+          _showGraph(),
+          //Expanded: lo hace tomar todo el espacio disponible en base a la columna.
+          Expanded(
+            child: ListView.builder(
+              itemBuilder: (BuildContext context, int index) => _crearCivilizationTile(civilizaciones[index]),
+              itemCount: civilizaciones.length,        
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         elevation: 2,
@@ -56,6 +109,51 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _showGraph(){
+    Map<String, double> dataMap = {};
+    civilizaciones.forEach((Civilizacion civilizacion) {
+      dataMap[civilizacion.name] = civilizacion.votes.toDouble();
+    });
+    List<Color> colorList = [
+      Colors.blue[300],
+      Colors.red[200],
+      Colors.green[300],
+      Colors.pink[300],
+      Colors.blue[100],
+      Colors.red[100],
+      Colors.green[100],
+      Colors.pink[100]
+    ];
+    return Container(
+      height: 400,
+      width: 400,
+      child: PieChart(
+        dataMap: dataMap,
+        animationDuration: Duration(milliseconds: 800),
+        chartRadius: MediaQuery.of(context).size.width / 2,
+        colorList: colorList,
+        initialAngleInDegree: 0,
+        chartType: ChartType.disc,
+        ringStrokeWidth: 32,
+        legendOptions: LegendOptions(
+          showLegendsInRow: false,
+          legendPosition: LegendPosition.right,
+          showLegends: true,
+          legendShape: BoxShape.circle,
+          legendTextStyle: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        chartValuesOptions: ChartValuesOptions(
+          showChartValueBackground: true,
+          showChartValues: true,
+          showChartValuesInPercentage: false,
+          showChartValuesOutside: false,
+        ),
+      )
+    );
+  }
+
   Widget _crearCivilizationTile(Civilizacion civilizacion) {
     return Dismissible(
       key: Key( civilizacion.id ),
@@ -66,7 +164,7 @@ class _HomePageState extends State<HomePage> {
         child: Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            'Delete band',
+            'Delete Civilization',
             style: TextStyle(
               color: Colors.white.withOpacity(0.9)
             ),
@@ -88,14 +186,14 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         onTap: (){
-          print('civilización: ${civilizacion.name}');
+          print('civilización: ${civilizacion.id}');
+          final socketService = Provider.of<SocketService>(context, listen: false);
+          socketService.socket.emit('vote_civilization', {'id':civilizacion.id});
         },
       ),
       onDismissed: (DismissDirection direction){
-        civilizaciones.remove(civilizacion);
-        setState(() {
-          
-        });
+        final socketService = Provider.of<SocketService>(context, listen: false);
+        socketService.socket.emit('remove_civilization', {'id':civilizacion.id});
       },
     );
   }
@@ -151,23 +249,22 @@ class _HomePageState extends State<HomePage> {
           );
         }
       );
-    }
-    
+    } 
   }
 
   void _addCivilizationToList(String civilizationName){
     if(civilizationName.length >= 1){
-      this.civilizaciones.add(
-        Civilizacion(
-          id: this.civilizaciones.length.toString(),
-          name: civilizationName,
-          votes: 0
-        )
-      );
-      setState(() {
-        
-      });
+      final socketService = Provider.of<SocketService>(context, listen: false);
+      socketService.socket.emit('add_civilization', {'name':civilizationName});
       Navigator.pop(context);
     }
+  }
+
+  @override
+  void dispose() {
+    // TODO: implement dispose
+    final socketService = Provider.of<SocketService>(context);
+    socketService.socket.off('civilizaciones_activas');
+    super.dispose();  
   }
 }

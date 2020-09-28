@@ -23,6 +23,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+     
+  #para el manejo de sockets
+  socket_io_client: ^0.9.11
+  #manejador de estado
+  provider: ^4.3.2+2
+  #para el manejo de gráficas circulares
+  pie_chart: ^4.0.1
 
 
   # The following adds the Cupertino Icons font to your application.
